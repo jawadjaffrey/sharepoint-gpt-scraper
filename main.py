@@ -3,11 +3,11 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from urllib.parse import unquote
 import time
 import traceback
 
 app = Flask(__name__)
-
 last_called = 0
 cooldown = 15  # seconds
 
@@ -22,13 +22,11 @@ def get_files():
             "message": f"Please wait {wait_time} more second(s) before retrying."
         }), 429
 
-    last_called = now
-
-    data = request.get_json()
-    folder_url = data.get("shared_folder_url")
-    ext_filter = data.get("file_extension_filter", "all").lower()
-
     try:
+        data = request.get_json()
+        folder_url = unquote(data.get("shared_folder_url", ""))  # ✅ Fix applied here
+        ext_filter = data.get("file_extension_filter", "all").lower()
+
         options = Options()
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
@@ -42,7 +40,7 @@ def get_files():
         driver = webdriver.Chrome(service=service, options=options)
 
         driver.get(folder_url)
-        time.sleep(15)
+        time.sleep(15)  # Wait for JS to load content
 
         links = driver.find_elements(By.TAG_NAME, "a")
         files = []
@@ -55,11 +53,19 @@ def get_files():
                     files.append({"filename": text, "download_link": href})
 
         driver.quit()
-        return jsonify({"status": "success", "total_files_found": len(files), "files": files})
+
+        return jsonify({
+            "status": "success",
+            "total_files_found": len(files),
+            "files": files
+        })
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Unexpected server error", "details": str(e)}), 500
+        return jsonify({
+            "error": "Unexpected server error",
+            "details": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080)
